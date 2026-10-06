@@ -1,0 +1,3 @@
+requests>=2.31
+colorama>=0.4.6
+PySocks>=1.7.1

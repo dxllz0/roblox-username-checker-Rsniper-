@@ -1,0 +1,13 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+
+# RSniper outputs / local data
+valid.txt
+checked.txt
+results.jsonl
+results.csv
+proxy.txt
+proxies.txt
+t_*.txt
+test_*.txt

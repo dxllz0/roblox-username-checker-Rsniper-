@@ -1,4 +1,4 @@
-# roblox username checker / Sniper
+# roblox username checker
 
 i made this to check a bunch of roblox names without doing it by hand lol. it just uses the normal validate endpoint and tells you whats free.
 
