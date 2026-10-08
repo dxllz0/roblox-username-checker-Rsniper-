@@ -1,7 +1,6 @@
-# RSniper - Roblox username sniper
-import argparse  # CLI argument parsing
+import argparse
 import concurrent.futures
-import csv  # kept for CSV result output
+import csv
 import datetime
 import json
 import random
@@ -9,13 +8,13 @@ import re
 import string
 import threading
 import time
+import os
 
 import requests
 from colorama import Fore, init
 
 init(autoreset=True)
 
-# roblox usernames: 3-20 chars, alphanumeric + underscore
 USERNAME_RE = re.compile(r'^[A-Za-z0-9_]{3,20}$')
 DEFAULT_CHARSET = string.ascii_letters + string.digits + '_'
 
@@ -25,9 +24,9 @@ _proxy_lock = threading.Lock()
 _sessions_lock = threading.Lock()
 _circuit_lock = threading.Lock()
 
-_proxies = []  # active proxy URLs
+_proxies = []
 _proxy_idx = 0
-_proxy_fails: dict = {}
+_proxy_fails = {}
 _all_sessions = []
 _circuit_until = 0.0
 
@@ -37,22 +36,13 @@ def log(msg, color=Fore.WHITE):
         print(color + msg)
 
 
-# proxy handling :)
-
 DEFAULT_PROXY_FILE = 'proxy.txt'
-PROXY_TEMPLATE = """# Add one proxy per line.
-# Supported formats:
-#   ip:port
-#   ip:port:user:pass
-#   http://ip:port  https://ip:port  socks4://ip:port  socks5://ip:port
-#   socks5://user:pass@ip:port
-# Bare ip:port entries use --proxy-type (default http).
-# Example:
-# 127.0.0.1:8080
+PROXY_TEMPLATE = """
+127.0.0.1:8080
 """
 
+
 def ensure_proxy_file(path):
-    import os
     if os.path.exists(path):
         return False
     try:
@@ -67,7 +57,6 @@ def ensure_proxy_file(path):
 
 
 def _port_ok(port, host):
-    # shared validation for host/port pairs
     if not port.isdigit():
         return False
     try:
@@ -110,7 +99,6 @@ def parse_proxy_line(line, default_type='http'):
     line = line.strip()
     if line == '' or line.startswith('#'):
         return None
-    # entries with an explicit scheme
     got = _parse_with_scheme(line)
     if got != 'NO_SCHEME':
         return got
@@ -121,14 +109,13 @@ def parse_proxy_line(line, default_type='http'):
             return None
         return default_type + '://' + host + ':' + port
     if len(parts) == 4:
-        # ip:port:user:pass
         host, port, user, pwd = parts
         if not _port_ok(port, host):
             return None
         if not user:
             return None
         return f"{default_type}://{user}:{pwd}@{host}:{port}"
-    return None  # support user:pass@ip:port form
+    return None
 
 
 def load_proxies(path, default_type="http"):
@@ -222,8 +209,6 @@ def close_all_sessions():
         pass
 
 
-# rate limit
-
 def note_429(wait):
     global _circuit_until
     with _circuit_lock:
@@ -240,11 +225,10 @@ def wait_for_circuit():
         time.sleep(rem)
 
 
-
 def random_birthday(year_start, year_end):
     y = random.randint(year_start, year_end)
     m = random.randint(1, 12)
-    d = random.randint(1, 28)  # cap ts at 28 to avoid invalid dates
+    d = random.randint(1, 28)
     return "%04d-%02d-%02d" % (y, m, d)
 
 
@@ -276,17 +260,20 @@ def workers_type(s):
         raise argparse.ArgumentTypeError('Workers must be >= 1.')
     return v
 
+
 def sleep_type(s):
     v = float(s)
     if v < 0:
         raise argparse.ArgumentTypeError("Sleep must be >= 0.")
     return v
 
+
 def generate_count_type(s):
     v = int(s)
     if v < 0:
         raise argparse.ArgumentTypeError('Generate count must be >= 0.')
     return v
+
 
 def name_len_type(s):
     v = int(s)
@@ -337,9 +324,7 @@ def iter_file_names(path):
     f.close()
 
 
-
 def _retry_wait(resp, attempt):
-    # prefer retry-after header
     try:
         w = float(resp.headers.get('Retry-After', 2 ** attempt))
     except:
@@ -348,7 +333,6 @@ def _retry_wait(resp, attempt):
 
 
 def _show_result(code, username, message, extra, quiet):
-    # centralized result logging extracted to keep check_username flat!!
     if quiet:
         if code == 0:
             log('Available: ' + username + extra, Fore.GREEN)
@@ -366,7 +350,6 @@ def _show_result(code, username, message, extra, quiet):
 
 
 def _single_attempt(username, bday, sess, proxy, attempt, quiet, verbose):
-    # status: 'ok', 'retry', 'fail'
     address = 'https://auth.roblox.com/v1/usernames/validate'
     t0 = time.time()
     r = sess.get(address, params={'request.username': username, 'request.birthday': bday}, timeout=10)
@@ -429,7 +412,6 @@ def check_username(username, args, max_retries=3):
             time.sleep(1)
             continue
         except Exception as e:
-            # remaining errors retry with backoff
             ms = int((time.time() - t0) * 1000)
             last_msg = str(e)[:200]
             if attempt >= max_retries:
@@ -453,7 +435,6 @@ def write_result(handle, lock, fmt, record):
         return
     with lock:
         if fmt == 'csv':
-            # manual CSV formatting to avoid extra dependency handling
             handle.write(record['username'] + ',' + str(record['code']) + ',' + str(record['latency_ms']) + ',"' + record['message'].replace('"', '') + '"\n')
         else:
             handle.write(json.dumps(record) + '\n')
@@ -574,7 +555,6 @@ def proxy_health_check(args):
 
 
 def _prepare_name(raw, seen, quiet):
-    # normalize and filter a name returns none to skip
     name = raw.strip()
     if name == '':
         return None
@@ -681,12 +661,10 @@ def main(argv=None):
     if len(checked) > 0:
         log('Skipping ' + str(len(checked)) + ' already checked names.', Fore.CYAN)
 
-    # stream names to keep memory usage flat for large inputs
     def _file_part():
         try:
             reader = iter_file_names(args.input)
         except FileNotFoundError:
-            # missing input is reported below
             return
             yield
         for line in reader:
@@ -710,7 +688,6 @@ def main(argv=None):
     results_handle = None
     if args.results_file:
         try:
-            import os
             empty = not os.path.exists(args.results_file)
             results_handle = open(args.results_file, 'a', encoding='utf-8', newline='')
             if empty and args.results_format == 'csv':
